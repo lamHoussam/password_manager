@@ -1,7 +1,7 @@
 extern crate steganography;
 use clap::Parser as ClapParser;
 
-use std::io::Read;
+use std::{io::Read, process::exit};
 use serde_json::{Value, Map};
 use std::fs::File;
 
@@ -64,41 +64,50 @@ fn add_new_platform(platform: &str, password: &str, mut settings_map: &Map<Strin
 //    settings_map
 }
 
-
-fn main() {
-    let settings_file_path = "settings.json";
+fn get_settings(settings_file_path: &str) -> Value {
     let mut file_content = String::new();
     let mut file = File::open(settings_file_path).expect("Failed to open settings file");
 
     file.read_to_string(&mut file_content).expect("Failed to read settings file");
     let settings: Value = serde_json::from_str(&file_content).expect("Failed to parse JSON");
 
-    println!("{:#?}", settings);
+    return settings;
+}
 
-    let psswrd = settings["password"].as_str().unwrap();
+fn get_picture_file_path<'a>(settings: &'a Value, platform: &str) -> Option<&'a str> {
     let pictures_paths = settings["pictures_paths"].as_array().unwrap();
-
-    println!("pass: {}", psswrd);
-
-
-    let platform = "Lamlih";
-
+    
     for value in pictures_paths {
         let map = value.as_object().unwrap();
         let name = map["name"].as_str().unwrap();
-        
-        if name == platform {
-            let path = map["path"].as_str().unwrap();
-            println!("{}", path);
-        }
+        if name.eq_ignore_ascii_case(platform) { return Some(map["path"].as_str().unwrap()); }
     }
 
+    return None;
+}
 
 
-    let original_image_path = "images/rust-social.jpg";
+fn main() {
+    let settings_file_path = "settings.json";
+    let settings = &get_settings(settings_file_path);
+
+    match settings["password"] {
+        Value::Null => {
+            println!("You need to set your main password");
+            exit(1);
+        }, 
+        _ => ()
+    }
+
+    let psswrd = settings["password"].as_str().unwrap(); 
+    
+    let platform = "Lamlih";
+    let original_image_path: &str = get_picture_file_path(settings, platform).expect("Couldnt find platform");
+
+    // let original_image_path = "images/rust-social.jpg";
     let output_image_path = "images/rust-social.png";
-
     let msg = "Houssam";
+
 
     encode_password(msg, original_image_path, output_image_path);
     let decoded_msg = decode_password(output_image_path);
