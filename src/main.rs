@@ -1,8 +1,8 @@
 extern crate steganography;
 use clap::Parser as ClapParser;
 
-use std::{io::Read, process::exit};
-use serde_json::{Value, Map};
+use std::{io::{Read, Write}, process::exit};
+use serde_json::{Value, Map, json};
 use std::fs::File;
 
 #[derive(ClapParser, Debug)]
@@ -60,9 +60,34 @@ fn decode_password(output_image_path: &str) -> String {
     return message.to_string();
 }
 
-fn add_new_platform(platform: &str, password: &str, mut settings_map: &Map<String, Value>) {
-//    settings_map
+fn add_new_platform(platform: &str, path: &str, settings: &mut Value, output_settings_file: &str) -> bool {
+    let pictures_paths = settings["pictures_paths"].as_array_mut().unwrap();
+
+    if pictures_paths.iter().any(|v| v.as_object().unwrap()["name"] == platform) {
+        println!("You already have a password for this platform");
+        return false;
+    }
+
+    let mut map: Map<String, Value> = Map::new();
+    map.insert("name".to_string(), serde_json::json!(platform.to_string()));
+    map.insert("path".to_string(), serde_json::json!(path.to_string()));
+
+
+    pictures_paths.push(json!(map));
+    settings["pictures_paths"] = json!(pictures_paths.to_vec());
+
+    let json_str = serde_json::to_string_pretty(&settings)
+        .expect("Failed to write to json str");
+
+    let mut file = File::create(output_settings_file)
+        .expect("Couldnt open output file on add new platform");
+ 
+    file.write_all(json_str.as_bytes())
+        .expect("Failed to write to output file");
+
+    return true;
 }
+
 
 fn get_settings(settings_file_path: &str) -> Value {
     let mut file_content = String::new();
@@ -88,8 +113,10 @@ fn get_picture_file_path<'a>(settings: &'a Value, platform: &str) -> Option<&'a 
 
 
 fn main() {
+    // let args = Args::parse();
+
     let settings_file_path = "settings.json";
-    let settings = &get_settings(settings_file_path);
+    let settings = &mut get_settings(settings_file_path);
 
     match settings["password"] {
         Value::Null => {
@@ -99,6 +126,7 @@ fn main() {
         _ => ()
     }
 
+    add_new_platform("TestPlatform", "Houssam", settings, settings_file_path);
     let psswrd = settings["password"].as_str().unwrap(); 
     
     let platform = "Lamlih";
@@ -109,9 +137,9 @@ fn main() {
     let msg = "Houssam";
 
 
-    encode_password(msg, original_image_path, output_image_path);
-    let decoded_msg = decode_password(output_image_path);
+    //  encode_password(msg, original_image_path, output_image_path);
+    // let decoded_msg = decode_password(output_image_path);
 
-    println!("Decoded message : {:?}", decoded_msg);
+    // println!("Decoded message : {:?}", decoded_msg);
 }
 
