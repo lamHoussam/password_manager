@@ -1,4 +1,6 @@
 extern crate steganography;
+
+use rpassword;
 use clap::Parser as ClapParser;
 
 use std::{io::{Read, Write}, process::exit};
@@ -8,27 +10,21 @@ use std::fs::File;
 #[derive(ClapParser, Debug)]
 #[command()]
 struct Args {
-    //// Data file path for global variables
-    // #[arg(short, long)]
-    // data: Option<String>,
-    //// Sample markdown file
-    // #[arg(short, long)]
-    // sample: String,
-    //// Output markdown file
-    // #[arg(short, long)]
-    // output: String,
-
     /// Original picture path
-    # [arg(short, long)]
+    # [arg(short, long, default_value= "")]
     picture_path: String,
 
-    /// Output picture path
-    # [arg(short, long)]
-    output: String,
+    /// Platform to add
+    # [arg(long)]
+    platform: String,
 
     /// Word to encode
     # [arg(short, long)]
-    word: String,
+    add: bool,
+
+    /// Settings file path
+    # [arg(short, long, default_value= "settings.json")]
+    settings_file: String,
 }
 
 fn encode_password(msg: &str, original_image_path: &str, output_image_path: &str) {
@@ -55,12 +51,12 @@ fn decode_password(output_image_path: &str) -> String {
             *b != 0xff_u8
         })
         .collect();
-    
+
     let message = steganography::util::bytes_to_str(clean_buffer.as_slice());
     return message.to_string();
 }
 
-fn add_new_platform(platform: &str, path: &str, settings: &mut Value, output_settings_file: &str) -> bool {
+fn add_new_platform(platform: &str, path: &str, password: &str, settings: &mut Value, output_settings_file: &str) -> bool {
     let pictures_paths = settings["pictures_paths"].as_array_mut().unwrap();
 
     if pictures_paths.iter().any(|v| v.as_object().unwrap()["name"] == platform) {
@@ -85,6 +81,9 @@ fn add_new_platform(platform: &str, path: &str, settings: &mut Value, output_set
     file.write_all(json_str.as_bytes())
         .expect("Failed to write to output file");
 
+    encode_password(&password, path, path);
+
+    println!("Successfully added {}", platform);
     return true;
 }
 
@@ -113,33 +112,42 @@ fn get_picture_file_path<'a>(settings: &'a Value, platform: &str) -> Option<&'a 
 
 
 fn main() {
-    // let args = Args::parse();
-
-    let settings_file_path = "settings.json";
+    let args = Args::parse();
+    let settings_file_path = args.settings_file.as_str();
+    let platform = args.platform.as_str();
+    
     let settings = &mut get_settings(settings_file_path);
 
-    match settings["password"] {
+    let pass = match &settings["password"] {
         Value::Null => {
             println!("You need to set your main password");
             exit(1);
         }, 
-        _ => ()
+        Value::String(v) => v.as_str(),
+        _ => "",
+    };
+
+    let password = rpassword::read_password_from_tty(Some("Enter your password: "))
+        .expect("Failed to read password"); 
+    
+    if !pass.eq_ignore_ascii_case(&password) {
+        println!("Wrong password");
+        exit(2);
+    } 
+
+    if args.add {
+        let picture_path = args.picture_path.as_str();
+        print!("Enter your password for {}", platform);
+        let platform_password = rpassword::read_password_from_tty(Some(": "))
+        .expect("Failed to read password"); 
+
+        add_new_platform(platform, picture_path, &platform_password, settings, settings_file_path);
+        return;
     }
 
-    add_new_platform("TestPlatform", "Houssam", settings, settings_file_path);
-    let psswrd = settings["password"].as_str().unwrap(); 
-    
-    let platform = "Lamlih";
     let original_image_path: &str = get_picture_file_path(settings, platform).expect("Couldnt find platform");
+    let decoded_msg = decode_password(original_image_path);
 
-    // let original_image_path = "images/rust-social.jpg";
-    let output_image_path = "images/rust-social.png";
-    let msg = "Houssam";
-
-
-    //  encode_password(msg, original_image_path, output_image_path);
-    // let decoded_msg = decode_password(output_image_path);
-
-    // println!("Decoded message : {:?}", decoded_msg);
+    println!("Your password for {} : {}", platform, decoded_msg);
 }
 
